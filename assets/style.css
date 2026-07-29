@@ -27,6 +27,9 @@
 
 * { box-sizing: border-box; }
 
+/* display:flex 等を個別指定しているクラスより hidden 属性を必ず優先させる */
+[hidden] { display: none !important; }
+
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans",
