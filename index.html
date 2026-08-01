@@ -8,6 +8,26 @@
 <link rel="stylesheet" href="assets/style.css" />
 </head>
 <body>
+  <!-- パスワードロック（簡易・抑止目的。詳細は README のセキュリティ注意を参照） -->
+  <div id="lockOverlay" class="modal-overlay" hidden>
+    <div class="modal modal-small">
+      <h2>🔒 パスワードを入力</h2>
+      <p class="modal-desc">このアプリを利用するにはパスワードが必要です。</p>
+      <form id="lockForm">
+        <label>
+          パスワード
+          <input type="password" id="lockPassword" autocomplete="off" required />
+        </label>
+        <p id="lockError" class="modal-note lock-error" hidden>パスワードが違います。</p>
+        <div class="modal-actions">
+          <div class="modal-actions-right">
+            <button type="submit" class="btn btn-primary">入る</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <header class="topbar">
     <div class="brand">
       <span class="brand-icon">📁</span>
