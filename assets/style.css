@@ -262,6 +262,7 @@ body {
   line-height: 1.5;
   margin: 4px 0 16px;
 }
+.lock-error { color: var(--danger); background: rgba(220, 38, 38, 0.08); }
 .modal form { display: flex; flex-direction: column; gap: 14px; }
 .modal label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--text-muted); }
 .modal input {
