@@ -1,4 +1,5 @@
 import { GitHubClient, GitHubApiError } from "./api.js";
+import { ensureUnlocked } from "./lock.js";
 
 const STORAGE_KEY = "githubDriveConfig";
 const MAX_FILE_SIZE = 90 * 1024 * 1024; // GitHub Contents API の実用上限に合わせた安全マージン
@@ -585,4 +586,4 @@ async function init() {
   }
 }
 
-init();
+ensureUnlocked().then(init);
