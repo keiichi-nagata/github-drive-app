@@ -186,10 +186,13 @@ body {
 }
 .file-table tbody tr:last-child { border-bottom: none; }
 .file-table tbody tr:hover { background: var(--bg); }
+.file-table tbody tr.row-selected { background: rgba(37, 99, 235, 0.08); }
 .file-table td { padding: 10px 16px; vertical-align: middle; }
 
+.col-select { width: 40px; }
 .col-size { width: 120px; color: var(--text-muted); white-space: nowrap; }
-.col-actions { width: 160px; text-align: right; white-space: nowrap; }
+.col-select input[type="checkbox"],
+.entry-checkbox { width: 16px; height: 16px; accent-color: var(--primary); cursor: pointer; }
 
 .entry-name {
   display: flex;
@@ -201,19 +204,6 @@ body {
 .entry-name.is-folder { cursor: pointer; color: var(--text); font-weight: 500; }
 .entry-name.is-folder:hover { color: var(--primary); }
 .entry-icon { font-size: 18px; flex-shrink: 0; }
-
-.row-actions { display: inline-flex; gap: 4px; }
-.row-actions button {
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  font-size: 15px;
-  padding: 5px 7px;
-  border-radius: 6px;
-  color: var(--text-muted);
-}
-.row-actions button:hover { background: var(--border); color: var(--text); }
-.row-actions button.danger:hover { color: var(--danger); background: rgba(220, 38, 38, 0.1); }
 
 .toast-container {
   position: fixed;
