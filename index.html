@@ -27,6 +27,8 @@
       <div class="toolbar-actions">
         <button id="newFolderBtn" class="btn" disabled>📂 新しいフォルダ</button>
         <button id="uploadBtn" class="btn btn-primary" disabled>⬆️ アップロード</button>
+        <button id="downloadSelectedBtn" class="btn" disabled>⬇️ ダウンロード</button>
+        <button id="deleteSelectedBtn" class="btn btn-danger" disabled>🗑️ 削除</button>
         <button id="refreshBtn" class="btn btn-ghost" disabled>🔄 更新</button>
         <input type="file" id="fileInput" multiple hidden />
       </div>
@@ -42,9 +44,9 @@
       <table class="file-table" id="fileTable" hidden>
         <thead>
           <tr>
+            <th class="col-select"><input type="checkbox" id="selectAllCheckbox" title="すべて選択" /></th>
             <th class="col-name">名前</th>
             <th class="col-size">サイズ</th>
-            <th class="col-actions">操作</th>
           </tr>
         </thead>
         <tbody id="fileTableBody"></tbody>
