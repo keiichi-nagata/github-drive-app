@@ -87,14 +87,15 @@ export class GitHubClient {
     }
   }
 
-  // 再帰的にファイル一覧（type === "file"）を取得する
-  async listFilesRecursive(path) {
+  // 再帰的にファイル一覧（type === "file"）を取得する。
+  // includeGitkeep: true の場合、空フォルダの目印である .gitkeep も含める（フォルダ削除時に必要）
+  async listFilesRecursive(path, { includeGitkeep = false } = {}) {
     const entries = await this.listContents(path);
     let files = [];
     for (const entry of entries) {
-      if (entry.name === ".gitkeep") continue;
+      if (!includeGitkeep && entry.name === ".gitkeep") continue;
       if (entry.type === "dir") {
-        files = files.concat(await this.listFilesRecursive(entry.path));
+        files = files.concat(await this.listFilesRecursive(entry.path, { includeGitkeep }));
       } else {
         files.push(entry);
       }
@@ -163,9 +164,9 @@ export class GitHubClient {
     });
   }
 
-  // フォルダ配下の全ファイルを削除する（git 上、空フォルダは自動的に消える）
+  // フォルダ配下の全ファイル（.gitkeep 含む）を削除する（git 上、空フォルダは自動的に消える）
   async deleteFolder(path) {
-    const files = await this.listFilesRecursive(path);
+    const files = await this.listFilesRecursive(path, { includeGitkeep: true });
     for (const file of files) {
       await this.deleteFile(file.path, file.sha, `Delete folder ${path}`);
     }
