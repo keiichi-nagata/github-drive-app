@@ -47,6 +47,8 @@ export class GitHubClient {
   async _request(path, options = {}) {
     const res = await fetch(`${API_BASE}${path}`, {
       ...options,
+      // 書き込み直後の一覧取得が古い応答を返さないよう、常にブラウザキャッシュを迂回する
+      cache: "no-store",
       headers: this._headers(options.headers),
     });
     if (!res.ok) {
@@ -74,7 +76,8 @@ export class GitHubClient {
   // path 配下の一覧を取得。ルートは path === ""
   // 空リポジトリの場合は 404 なので [] を返す。
   async listContents(path) {
-    const qs = `?ref=${encodeURIComponent(this.branch)}`;
+    // _ts はキャッシュ迂回用のダミーパラメータ（GitHub 側・中継プロキシ側のURLキー付きキャッシュ対策）
+    const qs = `?ref=${encodeURIComponent(this.branch)}&_ts=${Date.now()}`;
     try {
       const data = await this._request(`${this._contentsUrl(path)}${qs}`);
       return Array.isArray(data) ? data : [data];
@@ -100,7 +103,7 @@ export class GitHubClient {
   }
 
   async getFileMeta(path) {
-    const qs = `?ref=${encodeURIComponent(this.branch)}`;
+    const qs = `?ref=${encodeURIComponent(this.branch)}&_ts=${Date.now()}`;
     return this._request(`${this._contentsUrl(path)}${qs}`);
   }
 
@@ -108,8 +111,9 @@ export class GitHubClient {
   // raw メディアタイプで api.github.com から直接取得することで、
   // 1MB を超えるファイルや private リポジトリでも同一エンドポイント・同一 CORS 設定で扱える。
   async downloadFile(path) {
-    const qs = `?ref=${encodeURIComponent(this.branch)}`;
+    const qs = `?ref=${encodeURIComponent(this.branch)}&_ts=${Date.now()}`;
     const res = await fetch(`${API_BASE}${this._contentsUrl(path)}${qs}`, {
+      cache: "no-store",
       headers: this._headers({ Accept: "application/vnd.github.raw" }),
     });
     if (!res.ok) {
