@@ -1,4 +1,4 @@
 // このファイルは公開リポジトリにコミットされる想定です。平文パスワードではなく
 // SHA-256 ハッシュ値を設定してください（作り方は README「パスワード保護」参照）。
 // 空文字のままならパスワード画面は表示されません。
-export const ACCESS_PASSWORD_HASH = "";
+export const ACCESS_PASSWORD_HASH = "b560ed1c26039ae5519f0f80e33a925e74602acd08767aaa7160187b1b355b9a";
