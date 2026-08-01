@@ -10,12 +10,15 @@ const el = {
   breadcrumb: document.getElementById("breadcrumb"),
   newFolderBtn: document.getElementById("newFolderBtn"),
   uploadBtn: document.getElementById("uploadBtn"),
+  downloadSelectedBtn: document.getElementById("downloadSelectedBtn"),
+  deleteSelectedBtn: document.getElementById("deleteSelectedBtn"),
   refreshBtn: document.getElementById("refreshBtn"),
   fileInput: document.getElementById("fileInput"),
   dropzone: document.getElementById("dropzone"),
   emptyState: document.getElementById("emptyState"),
   fileTable: document.getElementById("fileTable"),
   fileTableBody: document.getElementById("fileTableBody"),
+  selectAllCheckbox: document.getElementById("selectAllCheckbox"),
   toastContainer: document.getElementById("toastContainer"),
 
   settingsModal: document.getElementById("settingsModal"),
@@ -39,6 +42,8 @@ const el = {
 
 let client = null;
 let currentPath = []; // パスセグメントの配列
+let currentEntries = []; // 現在のフォルダに表示中のエントリ一覧
+const selection = new Map(); // path -> entry（現在のフォルダ内での選択状態）
 
 // ---------- ユーティリティ ----------
 
@@ -118,7 +123,57 @@ function setToolbarEnabled(enabled) {
   el.newFolderBtn.disabled = !enabled;
   el.uploadBtn.disabled = !enabled;
   el.refreshBtn.disabled = !enabled;
+  if (!enabled) clearSelection();
+  updateSelectionButtons();
 }
+
+// ---------- 選択状態 ----------
+
+function clearSelection() {
+  selection.clear();
+  el.selectAllCheckbox.checked = false;
+  el.selectAllCheckbox.indeterminate = false;
+  updateSelectionButtons();
+}
+
+function updateSelectionButtons() {
+  const enabled = !!client && selection.size > 0;
+  el.downloadSelectedBtn.disabled = !enabled;
+  el.deleteSelectedBtn.disabled = !enabled;
+}
+
+function syncSelectAllCheckbox() {
+  const total = currentEntries.length;
+  const checkedCount = selection.size;
+  el.selectAllCheckbox.checked = total > 0 && checkedCount === total;
+  el.selectAllCheckbox.indeterminate = checkedCount > 0 && checkedCount < total;
+}
+
+function toggleSelection(entry, checked, tr) {
+  if (checked) {
+    selection.set(entry.path, entry);
+  } else {
+    selection.delete(entry.path);
+  }
+  tr.classList.toggle("row-selected", checked);
+  syncSelectAllCheckbox();
+  updateSelectionButtons();
+}
+
+el.selectAllCheckbox.addEventListener("change", () => {
+  const checked = el.selectAllCheckbox.checked;
+  selection.clear();
+  if (checked) {
+    currentEntries.forEach((entry) => selection.set(entry.path, entry));
+  }
+  el.fileTableBody.querySelectorAll("tr").forEach((tr) => {
+    tr.classList.toggle("row-selected", checked);
+    const cb = tr.querySelector(".entry-checkbox");
+    if (cb) cb.checked = checked;
+  });
+  el.selectAllCheckbox.indeterminate = false;
+  updateSelectionButtons();
+});
 
 // ---------- 設定モーダル ----------
 
@@ -225,6 +280,7 @@ async function navigateTo(segments) {
 
 async function refresh() {
   if (!client) return;
+  clearSelection();
   renderBreadcrumb();
   try {
     const entries = await client.listContents(pathString(currentPath));
@@ -238,6 +294,7 @@ function renderEntries(entries) {
   const visible = entries.filter((e) => e.name !== ".gitkeep");
 
   if (visible.length === 0) {
+    currentEntries = [];
     el.fileTable.hidden = true;
     el.emptyState.hidden = false;
     el.emptyState.textContent = "このフォルダは空です。アップロードするか、新しいフォルダを作成してください。";
@@ -250,15 +307,26 @@ function renderEntries(entries) {
 
   const dirs = visible.filter((e) => e.type === "dir").sort((a, b) => a.name.localeCompare(b.name, "ja"));
   const files = visible.filter((e) => e.type !== "dir").sort((a, b) => a.name.localeCompare(b.name, "ja"));
+  currentEntries = [...dirs, ...files];
 
-  [...dirs, ...files].forEach((entry) => {
+  currentEntries.forEach((entry) => {
     el.fileTableBody.appendChild(renderRow(entry));
   });
+  syncSelectAllCheckbox();
 }
 
 function renderRow(entry) {
   const tr = document.createElement("tr");
   const isDir = entry.type === "dir";
+
+  const selectTd = document.createElement("td");
+  selectTd.className = "col-select";
+  const checkbox = document.createElement("input");
+  checkbox.type = "checkbox";
+  checkbox.className = "entry-checkbox";
+  checkbox.checked = selection.has(entry.path);
+  checkbox.addEventListener("change", () => toggleSelection(entry, checkbox.checked, tr));
+  selectTd.appendChild(checkbox);
 
   const nameTd = document.createElement("td");
   const nameWrap = document.createElement("div");
@@ -279,31 +347,9 @@ function renderRow(entry) {
   sizeTd.className = "col-size";
   sizeTd.textContent = isDir ? "" : formatSize(entry.size);
 
-  const actionsTd = document.createElement("td");
-  actionsTd.className = "col-actions";
-  const actions = document.createElement("div");
-  actions.className = "row-actions";
-
-  if (!isDir) {
-    const downloadBtn = document.createElement("button");
-    downloadBtn.textContent = "⬇️";
-    downloadBtn.title = "ダウンロード";
-    downloadBtn.addEventListener("click", () => downloadFile(entry));
-    actions.appendChild(downloadBtn);
-  }
-
-  const deleteBtn = document.createElement("button");
-  deleteBtn.textContent = "🗑️";
-  deleteBtn.className = "danger";
-  deleteBtn.title = "削除";
-  deleteBtn.addEventListener("click", () => deleteEntry(entry, isDir));
-  actions.appendChild(deleteBtn);
-
-  actionsTd.appendChild(actions);
-
+  tr.appendChild(selectTd);
   tr.appendChild(nameTd);
   tr.appendChild(sizeTd);
-  tr.appendChild(actionsTd);
   return tr;
 }
 
@@ -321,22 +367,50 @@ function fileIcon(name) {
   return map[ext] || "📄";
 }
 
-// ---------- ダウンロード ----------
+// ---------- ダウンロード（選択項目を一括・非圧縮で） ----------
 
-async function downloadFile(entry) {
+async function downloadSingleFile(entry) {
+  const buffer = await client.downloadFile(entry.path);
+  const blob = new Blob([buffer]);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = entry.name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function downloadSelected() {
+  if (selection.size === 0) return;
+  const entries = Array.from(selection.values());
+
   try {
-    showProgress(`ダウンロード中: ${entry.name}`);
-    const buffer = await client.downloadFile(entry.path);
-    const blob = new Blob([buffer]);
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = entry.name;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-    showToast(`${entry.name} をダウンロードしました`, "success");
+    showProgress("ダウンロード対象を確認中...");
+    // フォルダが選択されている場合は中のファイルを再帰的に展開する
+    let files = [];
+    for (const entry of entries) {
+      if (entry.type === "dir") {
+        files = files.concat(await client.listFilesRecursive(entry.path));
+      } else {
+        files.push(entry);
+      }
+    }
+    if (files.length === 0) {
+      showToast("ダウンロード対象のファイルがありません", "error");
+      return;
+    }
+
+    let done = 0;
+    for (const file of files) {
+      updateProgress(done / files.length, `ダウンロード中... (${done + 1} / ${files.length}) ${file.name}`);
+      await downloadSingleFile(file);
+      done++;
+      // ブラウザの複数ファイル自動ダウンロード制限に配慮して少し間隔を空ける
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    }
+    showToast(`${files.length} 件のファイルをダウンロードしました（圧縮なし・個別ファイル）`, "success");
   } catch (err) {
     handleError(err, "ダウンロードに失敗しました");
   } finally {
@@ -344,28 +418,42 @@ async function downloadFile(entry) {
   }
 }
 
-// ---------- 削除 ----------
+// ---------- 削除（選択項目を一括） ----------
 
-async function deleteEntry(entry, isDir) {
-  const label = isDir ? "フォルダ" : "ファイル";
-  if (!confirm(`${label}「${entry.name}」を削除しますか？この操作は取り消せません。`)) return;
+async function deleteSelected() {
+  if (selection.size === 0) return;
+  const entries = Array.from(selection.values());
+  const names = entries.map((e) => e.name).join(", ");
+  if (!confirm(`選択した ${entries.length} 件（${names}）を削除しますか？この操作は取り消せません。`)) return;
 
-  try {
-    if (isDir) {
-      showProgress(`フォルダを削除中: ${entry.name}`);
-      await client.deleteFolder(entry.path);
-    } else {
-      showProgress(`削除中: ${entry.name}`);
-      await client.deleteFile(entry.path, entry.sha);
+  showProgress(`削除中... (0 / ${entries.length})`);
+  let done = 0;
+  const failed = [];
+
+  for (const entry of entries) {
+    try {
+      if (entry.type === "dir") {
+        await client.deleteFolder(entry.path);
+      } else {
+        await client.deleteFile(entry.path, entry.sha);
+      }
+    } catch (err) {
+      failed.push(entry.name);
+      console.error(err);
     }
-    showToast(`${entry.name} を削除しました`, "success");
-    await refresh();
-  } catch (err) {
-    handleError(err, "削除に失敗しました");
-  } finally {
-    hideProgress();
+    done++;
+    updateProgress(done / entries.length, `削除中... (${done} / ${entries.length})`);
   }
+
+  hideProgress();
+  if (failed.length) showToast(`削除に失敗: ${failed.join(", ")}`, "error");
+  const succeeded = entries.length - failed.length;
+  if (succeeded > 0) showToast(`${succeeded} 件を削除しました`, "success");
+  await refresh();
 }
+
+el.downloadSelectedBtn.addEventListener("click", downloadSelected);
+el.deleteSelectedBtn.addEventListener("click", deleteSelected);
 
 // ---------- 新規フォルダ ----------
 
