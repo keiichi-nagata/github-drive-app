@@ -502,22 +502,93 @@ el.dropzone.addEventListener("dragover", (e) => {
 el.dropzone.addEventListener("dragleave", () => {
   el.dropzone.classList.remove("drag-over");
 });
-el.dropzone.addEventListener("drop", (e) => {
+el.dropzone.addEventListener("drop", async (e) => {
   e.preventDefault();
   el.dropzone.classList.remove("drag-over");
   if (!client) return;
-  const files = Array.from(e.dataTransfer.files || []);
-  if (files.length) uploadFiles(files);
+
+  // items + webkitGetAsEntry が使えればフォルダ構造ごと再帰的に展開する。
+  // 使えない古いブラウザでは従来通りファイルのみのフラットな一覧にフォールバックする。
+  if (e.dataTransfer.items && e.dataTransfer.items.length) {
+    showProgress("ドロップされた項目を確認中...");
+    try {
+      const entries = await collectDroppedEntries(e.dataTransfer.items);
+      hideProgress();
+      if (entries.length) {
+        uploadEntries(entries);
+      } else {
+        showToast("アップロードできるファイルが見つかりませんでした", "error");
+      }
+    } catch (err) {
+      hideProgress();
+      handleError(err, "ドロップされた内容の読み取りに失敗しました");
+    }
+  } else {
+    const files = Array.from(e.dataTransfer.files || []);
+    if (files.length) uploadFiles(files);
+  }
 });
 
+// ドロップされた File/フォルダ一式を再帰的に辿り、{ file, relativePath } の配列にする。
+// フォルダの場合は「フォルダ名/中のファイル名」という相対パスになる。
+async function collectDroppedEntries(dataTransferItems) {
+  const topLevelEntries = [];
+  for (const item of dataTransferItems) {
+    if (item.kind !== "file") continue;
+    const entry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : null;
+    if (entry) {
+      topLevelEntries.push(entry);
+    } else {
+      const file = item.getAsFile();
+      if (file) topLevelEntries.push({ isFile: true, _fallbackFile: file, name: file.name });
+    }
+  }
+
+  const results = [];
+
+  async function walk(entry, prefix) {
+    if (entry._fallbackFile) {
+      results.push({ file: entry._fallbackFile, relativePath: prefix + entry.name });
+      return;
+    }
+    if (entry.isFile) {
+      const file = await new Promise((resolve, reject) => entry.file(resolve, reject));
+      results.push({ file, relativePath: prefix + entry.name });
+    } else if (entry.isDirectory) {
+      const reader = entry.createReader();
+      const children = [];
+      // readEntries は一度に全件返さないことがあるため、空になるまで繰り返し呼ぶ
+      let batch;
+      do {
+        batch = await new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+        children.push(...batch);
+      } while (batch.length > 0);
+      for (const child of children) {
+        await walk(child, `${prefix}${entry.name}/`);
+      }
+    }
+  }
+
+  for (const entry of topLevelEntries) {
+    await walk(entry, "");
+  }
+  return results;
+}
+
+// ファイル選択ダイアログ／従来の平坦なファイル一覧からの呼び出し用ラッパー
 async function uploadFiles(files) {
   if (!files.length || !client) return;
+  await uploadEntries(files.map((file) => ({ file, relativePath: file.name })));
+}
 
-  const oversized = files.filter((f) => f.size > MAX_FILE_SIZE);
-  const valid = files.filter((f) => f.size <= MAX_FILE_SIZE);
+async function uploadEntries(entries) {
+  if (!entries.length || !client) return;
+
+  const oversized = entries.filter((e) => e.file.size > MAX_FILE_SIZE);
+  const valid = entries.filter((e) => e.file.size <= MAX_FILE_SIZE);
   if (oversized.length) {
     showToast(
-      `${oversized.map((f) => f.name).join(", ")} は ${formatSize(MAX_FILE_SIZE)} を超えるためスキップしました`,
+      `${oversized.map((e) => e.relativePath).join(", ")} は ${formatSize(MAX_FILE_SIZE)} を超えるためスキップしました`,
       "error"
     );
   }
@@ -527,10 +598,10 @@ async function uploadFiles(files) {
   let done = 0;
   const failed = [];
 
-  for (const file of valid) {
+  for (const { file, relativePath } of valid) {
     try {
       const buffer = await file.arrayBuffer();
-      const targetPath = pathString([...currentPath, file.name]);
+      const targetPath = pathString([...currentPath, ...relativePath.split("/")]);
 
       // 既存ファイルの上書きには sha が必要
       let existingSha;
@@ -542,11 +613,11 @@ async function uploadFiles(files) {
       }
 
       await client.putFile(targetPath, buffer, {
-        message: `Upload ${file.name}`,
+        message: `Upload ${relativePath}`,
         sha: existingSha,
       });
     } catch (err) {
-      failed.push(file.name);
+      failed.push(relativePath);
       console.error(err);
     }
     done++;
